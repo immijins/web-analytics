@@ -57,7 +57,9 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
-      }).catch(function () {});
+        keepalive: true,
+        credentials: 'omit' // 쿠키 전송이 불필요한 트래커 특성상 omit으로 설정
+        }).catch(function () {});
     }
 
     // 첫 진입 시 실행
