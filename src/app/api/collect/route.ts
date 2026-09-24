@@ -2,18 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '../../../../lib/supabase';
 import { UAParser } from 'ua-parser-js';
 
-// 공통 CORS 헤더 생성 함수
 function getCorsHeaders(req: NextRequest) {
   const origin = req.headers.get('origin') || '*';
   return {
     'Access-Control-Allow-Origin': origin,
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
     'Access-Control-Allow-Credentials': 'true',
   };
 }
 
-// OPTIONS (Preflight) 요청 처리
 export async function OPTIONS(req: NextRequest) {
   return new NextResponse(null, {
     status: 200,
@@ -21,7 +19,6 @@ export async function OPTIONS(req: NextRequest) {
   });
 }
 
-// POST 수집 요청 처리
 export async function POST(req: NextRequest) {
   const corsHeaders = getCorsHeaders(req);
 
@@ -36,19 +33,31 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Header 정보 추출
+    // IP 및 User-Agent 추출
     const userAgent = req.headers.get('user-agent') || '';
-    const rawIp = req.headers.get('x-forwarded-for') || req.ip || '';
+    const rawIp =
+      req.headers.get('x-forwarded-for') ||
+      req.headers.get('x-real-ip') ||
+      '127.0.0.1';
     const ip = rawIp.split(',')[0].trim();
 
-    // User-Agent 파싱
-    const parser = new UAParser(userAgent);
-    const browser = parser.getBrowser().name || 'Unknown';
-    const os = parser.getOS().name || 'Unknown';
-    const device = parser.getDevice().type || 'desktop';
+    // User-Agent 파싱 (안전 처리)
+    let browser = 'Unknown';
+    let os = 'Unknown';
+    let device = 'desktop';
+
+    try {
+      const parser = new UAParser(userAgent);
+      const result = parser.getResult();
+      browser = result.browser.name || 'Unknown';
+      os = result.os.name || 'Unknown';
+      device = result.device.type || 'desktop';
+    } catch (parseError) {
+      console.warn('UA Parsing error:', parseError);
+    }
 
     // Supabase DB 저장
-    const { error } = await supabase.from('page_views').insert([
+    const { data, error } = await supabase.from('page_views').insert([
       {
         website_id: websiteId,
         path: path,
@@ -62,20 +71,18 @@ export async function POST(req: NextRequest) {
     ]);
 
     if (error) {
-      console.error('Supabase Error:', error);
+      console.error('[Collect API] Supabase Insert Error:', error.message);
       return NextResponse.json(
         { error: error.message },
         { status: 500, headers: corsHeaders }
       );
     }
 
+    return NextResponse.json({ success: true }, { status: 200, headers: corsHeaders });
+  } catch (err: any) {
+    console.error('[Collect API] Unhandled Error:', err);
     return NextResponse.json(
-      { success: true },
-      { status: 200, headers: corsHeaders }
-    );
-  } catch (err) {
-    return NextResponse.json(
-      { error: 'Internal Server Error' },
+      { error: err?.message || 'Internal Server Error' },
       { status: 500, headers: corsHeaders }
     );
   }
