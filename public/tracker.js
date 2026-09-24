@@ -28,6 +28,7 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
                 keepalive: true,
+                credentials: 'omit'
             }).catch(function (err) {
                 console.error('[Analytics] Failed to send pageview', error);
             });

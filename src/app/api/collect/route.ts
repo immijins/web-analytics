@@ -1,69 +1,81 @@
-// 외부 사이트에서 보내오는 트래킹 데이터 처리, CORS 헤더 설정 API
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '../../../../lib/supabase';
 import { UAParser } from 'ua-parser-js';
 
-
-// CORS 허용
-export async function OPTIONS() {
-    return new NextResponse(null, {
-        status: 200,
-        headers: {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type',
-        },
-    });
+// 공통 CORS 헤더 생성 함수
+function getCorsHeaders(req: NextRequest) {
+  const origin = req.headers.get('origin') || '*';
+  return {
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Credentials': 'true',
+  };
 }
 
-export async function POST(req:NextRequest) {
-    try {
-        const body = await req.json();
-        const { websiteId, path, referrer, screen } = body;
+// Preflight (OPTIONS) 요청 처리
+export async function OPTIONS(req: NextRequest) {
+  return new NextResponse(null, {
+    status: 200,
+    headers: getCorsHeaders(req),
+  });
+}
 
-        if (!websiteId || !path) {
-            return NextResponse.json({ error: 'Missing required fields' }, { status: 400 } )
-        }
+export async function POST(req: NextRequest) {
+  const corsHeaders = getCorsHeaders(req);
 
-        // Header 정보 추출
-        const userAgent = req.headers.get('user-agent') || '';
-        const rawIp = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || '';
-        const ip = rawIp.split(',')[0].trim();
+  try {
+    const body = await req.json();
+    const { websiteId, path, referrer, screen } = body;
 
-        // User-Agent 파싱(브라우저, OS, 기기 종류)
-        const parser = new UAParser(userAgent);
-        const browser = parser.getBrowser().name || 'Unknown';
-        const os = parser.getOS().name || 'Unknown';
-        const device = parser.getDevice().type || 'desktop';
-    
-        // DB에 저장 
-        const { error } = await supabase.from('page_views').insert([
-            {
-                website_id: websiteId,
-                path: path,
-                referrer: referrer || null,
-                browser: browser,
-                os: os,
-                device: device,
-                ip: ip,
-                screen: screen || null,
-            },
-        ]);
-
-        if (error) {
-            console.error("supabse Error:", error);
-            return NextResponse.json({ error: error.message }, { status: 500 })
-        }
-
-        // Response 반환
-        return new NextResponse(JSON.stringify({ success: true }), {
-            status: 200,
-            headers: {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*',
-            },
-        });
-    } catch (err) {
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
+    if (!websiteId || !path) {
+      return NextResponse.json(
+        { error: 'Missing required fields' },
+        { status: 400, headers: corsHeaders }
+      );
     }
+
+    // Header 정보 추출
+    const userAgent = req.headers.get('user-agent') || '';
+    const rawIp =
+      req.headers.get('x-forwarded-for') ||
+      req.headers.get('x-real-ip') ||
+      '127.0.0.1';
+    const ip = rawIp.split(',')[0].trim();
+
+    // User-Agent 파싱
+    const parser = new UAParser(userAgent);
+    const browser = parser.getBrowser().name || 'Unknown';
+    const os = parser.getOS().name || 'Unknown';
+    const device = parser.getDevice().type || 'desktop';
+
+    // Supabase DB 저장
+    const { error } = await supabase.from('page_views').insert([
+      {
+        website_id: websiteId,
+        path: path,
+        referrer: referrer || null,
+        browser: browser,
+        os: os,
+        device: device,
+        ip: ip,
+        screen: screen || null,
+      },
+    ]);
+
+    if (error) {
+      console.error('Supabase Error:', error);
+      return NextResponse.json(
+        { error: error.message },
+        { status: 500, headers: corsHeaders }
+      );
+    }
+
+    return NextResponse.json({ success: true }, { status: 200, headers: corsHeaders });
+  } catch (err) {
+    return NextResponse.json(
+      { error: 'Internal Server Error' },
+      { status: 500, headers: corsHeaders }
+    );
+  }
 }
