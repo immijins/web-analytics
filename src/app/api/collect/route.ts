@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
     const { error } = await supabase.from('page_views').insert([
       {
         website_id: websiteId,
-        sessionId: sessionId || null,
+        session_id: sessionId || null,
         path: path,
         referrer: referrer || null,
         browser: browser,
