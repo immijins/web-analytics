@@ -72,6 +72,7 @@
           fetch(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            credentials: 'omit',
             body: body,
             keepalive: true,
           }).catch(function () {});
