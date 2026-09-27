@@ -4,7 +4,6 @@ import { UAParser } from 'ua-parser-js';
 
 function getCorsHeaders(req: NextRequest) {
   const origin = req.headers.get('origin') || '*';
-
   return {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -24,110 +23,85 @@ export async function POST(req: NextRequest) {
   const corsHeaders = getCorsHeaders(req);
 
   try {
-    const body = await req.json();
-
-    console.log('[Collect API] body:', body);
-
-    const {
-      websiteId,
-      sessionId,
-      path,
-      referrer,
-      screen,
-      duration,
-      maxScroll,
-      utmSource,
-      utmMedium,
-      utmCampaign,
-      utmTerm,
+    // 1. 요청 Body를 텍스트로 받아 안전하게 JSON 파싱
+    const text = await req.text();
+    if (!text) {
+      return NextResponse.json(
+        { error: 'Empty request body' },
+        { status: 400, headers: corsHeaders }
+      );
+    }
+    
+    const body = JSON.parse(text);
+    const { 
+      websiteId, 
+      sessionId, 
+      path, 
+      referrer, 
+      screen, 
+      duration, 
+      maxScroll, 
+      utmSource, 
+      utmMedium, 
+      utmCampaign, 
+      utmTerm 
     } = body;
 
     if (!websiteId || !path) {
       return NextResponse.json(
-        { error: 'Missing required fields' },
-        {
-          status: 400,
-          headers: corsHeaders,
-        }
+        { error: 'Missing required fields: websiteId or path' },
+        { status: 400, headers: corsHeaders }
       );
     }
 
+    // 2. IP 및 User-Agent 추출
     const userAgent = req.headers.get('user-agent') || '';
-
     const rawIp =
       req.headers.get('x-forwarded-for') ||
       req.headers.get('x-real-ip') ||
-      '';
-
-    const ip = rawIp
-      ? rawIp.split(',')[0].trim()
-      : null;
+      '127.0.0.1';
+    const ip = rawIp.split(',')[0].trim();
 
     const parser = new UAParser(userAgent);
-
     const browser = parser.getBrowser().name || 'Unknown';
     const os = parser.getOS().name || 'Unknown';
     const device = parser.getDevice().type || 'desktop';
 
-    const { data, error } = await supabase
-      .from('page_views')
-      .insert([
-        {
-          website_id: websiteId,
-          session_id: sessionId || null,
-          path: path,
-          referrer: referrer || null,
-          browser: browser,
-          os: os,
-          device: device,
-          ip: ip || null,
-          screen: screen || null,
-          duration: duration || 0,
-          max_scroll: maxScroll || 0,
-          utm_source: utmSource || null,
-          utm_medium: utmMedium || null,
-          utm_campaign: utmCampaign || null,
-          utm_term: utmTerm || null,
-        },
-      ]).select();
-
-      if (error) {
-        console.error('[Collect API] Supabase Error:', error);
-
-        return NextResponse.json(
-          {
-            error: error.message,
-            details: error.details,
-            hint: error.hint,
-            code: error.code,
-          },
-          {
-            status: 500,
-            headers: corsHeaders,
-          }
-        );
-      }
-
-      console.log('[Collect API] Insert success:', data);
-
-      return NextResponse.json(
-        { success: true },
-        {
-          status: 200,
-          headers: corsHeaders,
-        }
-      );
-  } catch (err: any) {
-    console.error('[Collect API] Unhandled Error:', err);
-
-    return NextResponse.json(
+    // 3. Supabase DB 저장
+    const { data, error } = await supabase.from('page_views').insert([
       {
-        error: err?.message || 'Internal Server Error',
+        website_id: String(websiteId),
+        session_id: sessionId ? String(sessionId) : null,
+        path: String(path),
+        referrer: referrer ? String(referrer) : null,
+        browser: browser,
+        os: os,
+        device: device,
+        ip: ip,
+        screen: screen ? String(screen) : null,
+        duration: Number(duration) || 0,
+        max_scroll: Number(maxScroll) || 0,
+        utm_source: utmSource ? String(utmSource) : null,
+        utm_medium: utmMedium ? String(utmMedium) : null,
+        utm_campaign: utmCampaign ? String(utmCampaign) : null,
+        utm_term: utmTerm ? String(utmTerm) : null,
       },
-      {
-        status: 500,
-        headers: corsHeaders,
-      }
+    ]);
+
+    if (error) {
+      console.error('❌ Supabase Insert Error:', error);
+      return NextResponse.json(
+        { error: error.message, details: error },
+        { status: 500, headers: corsHeaders }
+      );
+    }
+
+    return NextResponse.json({ success: true }, { status: 200, headers: corsHeaders });
+  } catch (err: any) {
+    console.error('❌ [Collect API] Unhandled Error:', err);
+    return NextResponse.json(
+      { error: err?.message || 'Internal Server Error' },
+      { status: 500, headers: corsHeaders }
     );
   }
 }
