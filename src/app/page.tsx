@@ -277,7 +277,6 @@ export default function DashboardPage() {
                     <th className="py-2 px-3">시간</th>
                     <th className="py-2 px-3">경로</th>
                     <th className="py-2 px-3">브라우저/OS</th>
-                    <th className="py-2 px-3">IP</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
@@ -291,9 +290,6 @@ export default function DashboardPage() {
                       </td>
                       <td className="py-2.5 px-3 text-xs text-gray-500">
                         {log.browser} / {log.os}
-                      </td>
-                      <td className="py-2.5 px-3 text-xs font-mono">
-                        {log.ip}
                       </td>
                     </tr>
                   ))}
